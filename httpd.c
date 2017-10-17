@@ -46,85 +46,116 @@ void unimplemented(int);
 /**********************************************************************/
 /* A request has caused a call to accept() on the server port to
  * return.  Process the request appropriately.
- * Parameters: the socket connected to the client */
+ * Parameters: the socket connected to the client 
+ * 处理套接字上监听到的HTTP请求   */
 /**********************************************************************/
 void accept_request(int client)
 {
- char buf[1024];
- int numchars;
- char method[255];
- char url[255];
- char path[512];
- size_t i, j;
- struct stat st;
- int cgi = 0;      /* becomes true if server decides this is a CGI
+    char buf[1024];
+    int numchars;
+    char method[255];
+    char url[255];
+    char path[512];
+    size_t i, j;
+    struct stat st;
+    int cgi = 0;      /* becomes true if server decides this is a CGI
                     * program */
- char *query_string = NULL;
+    char *query_string = NULL;
 
- numchars = get_line(client, buf, sizeof(buf));
- i = 0; j = 0;
- while (!ISspace(buf[j]) && (i < sizeof(method) - 1))
- {
-  method[i] = buf[j];
-  i++; j++;
- }
- method[i] = '\0';
+    //取得HTTP报文的第一行
+    numchars = get_line(client, buf, sizeof(buf));
+    i = 0; 
+    j = 0;
 
- if (strcasecmp(method, "GET") && strcasecmp(method, "POST"))
- {
-  unimplemented(client);
-  return;
- }
+    //取得方法
+    while (!ISspace(buf[j]) && (i < sizeof(method) - 1))
+    {
+        method[i] = buf[j];
+        i++; 
+        j++;
+    }
+    method[i] = '\0';
 
- if (strcasecmp(method, "POST") == 0)
-  cgi = 1;
+    //strcasecmp比较两个字符串是否相等，自动忽略大小小
+    if (strcasecmp(method, "GET") && strcasecmp(method, "POST"))
+    {
+        //发送"未实现该方法"
+        //TinyHttpd只实现了GET和POST方法
+        unimplemented(client);
+        return;
+    }
 
- i = 0;
- while (ISspace(buf[j]) && (j < sizeof(buf)))
-  j++;
- while (!ISspace(buf[j]) && (i < sizeof(url) - 1) && (j < sizeof(buf)))
- {
-  url[i] = buf[j];
-  i++; j++;
- }
- url[i] = '\0';
+    //如果是post方法，将CGI置为真
+    if (strcasecmp(method, "POST") == 0)
+        cgi = 1;
 
- if (strcasecmp(method, "GET") == 0)
- {
-  query_string = url;
-  while ((*query_string != '?') && (*query_string != '\0'))
-   query_string++;
-  if (*query_string == '?')
-  {
-   cgi = 1;
-   *query_string = '\0';
-   query_string++;
-  }
- }
+    i = 0;
+    //跳过所有空格，method和url之间可能有多个空格
+    while (ISspace(buf[j]) && (j < sizeof(buf)))
+        j++;
+    //将url拷贝到url[]中
+    while (!ISspace(buf[j]) && (i < sizeof(url) - 1) && (j < sizeof(buf)))
+    {
+        url[i] = buf[j];
+        i++; 
+        j++;
+    }
+    url[i] = '\0';
 
- sprintf(path, "htdocs%s", url);
- if (path[strlen(path) - 1] == '/')
-  strcat(path, "index.html");
- if (stat(path, &st) == -1) {
-  while ((numchars > 0) && strcmp("\n", buf))  /* read & discard headers */
-   numchars = get_line(client, buf, sizeof(buf));
-  not_found(client);
- }
- else
- {
-  if ((st.st_mode & S_IFMT) == S_IFDIR)
-   strcat(path, "/index.html");
-  if ((st.st_mode & S_IXUSR) ||
-      (st.st_mode & S_IXGRP) ||
-      (st.st_mode & S_IXOTH)    )
-   cgi = 1;
-  if (!cgi)
-   serve_file(client, path);
-  else
-   execute_cgi(client, path, method, query_string);
- }
+    if (strcasecmp(method, "GET") == 0)
+    {
+        query_string = url;
+        //如果url中带有解析参数，需要进行截取
+        while ((*query_string != '?') && (*query_string != '\0'))
+            query_string++;
+        if (*query_string == '?')
+        {
+            cgi = 1;
+            *query_string = '\0';
+            query_string++;
+        }
+    }
 
- close(client);
+    //url格式化到path
+    sprintf(path, "htdocs%s", url);
+    //如果是path是目录，默认为首页index.html
+    if (path[strlen(path) - 1] == '/')
+        strcat(path, "index.html");
+    //stat()通过文件名(path)获取信息
+    //保存在结构体st中
+    //成功返回0，失败返回-1
+    if (stat(path, &st) == -1) //寻找该文件是否存在
+    {
+        //如果不存在，忽略该请求后续内容(head、body)
+        while ((numchars > 0) && strcmp("\n", buf))  /* read & discard headers */
+            numchars = get_line(client, buf, sizeof(buf));
+        //发送一个找不到文件的response给客户端
+        not_found(client);
+    }
+    //如果找到该文件
+    else
+    {
+        //S_IFMT为掩码
+        //&运算把无关位置0，然后比较
+        //判断是否为目录
+        if ((st.st_mode & S_IFMT) == S_IFDIR)
+            //是目录，则结尾再加个index.html
+            strcat(path, "/index.html");
+
+        // 用户-执行 组-执行 其他-执行 
+        if ((st.st_mode & S_IXUSR) || (st.st_mode & S_IXGRP) || (st.st_mode & S_IXOTH))
+            //如果是可执行文件，不管权限如何，cgi置为1
+            cgi = 1;
+        if (!cgi)
+            //如果不需要CGI机制
+            serve_file(client, path);
+        else
+            //需要CGI机制则调用
+            execute_cgi(client, path, method, query_string);
+    }
+
+    //关闭套接字
+    close(client);
 }
 
 /**********************************************************************/
