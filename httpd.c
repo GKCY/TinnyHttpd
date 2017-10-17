@@ -414,33 +414,42 @@ void serve_file(int client, const char *filename)
  * on a specified port.  If the port is 0, then dynamically allocate a
  * port and modify the original port variable to reflect the actual
  * port.
+ 开启http服务，包括绑定端口，监听，开启线程处理链接
  * Parameters: pointer to variable containing the port to connect on
  * Returns: the socket */
 /**********************************************************************/
 int startup(u_short *port)
 {
- int httpd = 0;
- struct sockaddr_in name;
+    int httpd = 0;
+    struct sockaddr_in name;
+    //创建套接字
+    httpd = socket(PF_INET, SOCK_STREAM, 0);
+    //创建失败，输出错误，退出程序
+    if (httpd == -1)
+        error_die("socket");
+    //name参数赋值
+    memset(&name, 0, sizeof(name));
+    name.sin_family = AF_INET;
+    name.sin_port = htons(*port);
+    name.sin_addr.s_addr = htonl(INADDR_ANY);
+    //bind及失败处理
+    if (bind(httpd, (struct sockaddr *)&name, sizeof(name)) < 0)
+        error_die("bind");
 
- httpd = socket(PF_INET, SOCK_STREAM, 0);
- if (httpd == -1)
-  error_die("socket");
- memset(&name, 0, sizeof(name));
- name.sin_family = AF_INET;
- name.sin_port = htons(*port);
- name.sin_addr.s_addr = htonl(INADDR_ANY);
- if (bind(httpd, (struct sockaddr *)&name, sizeof(name)) < 0)
-  error_die("bind");
- if (*port == 0)  /* if dynamically allocating a port */
- {
-  int namelen = sizeof(name);
-  if (getsockname(httpd, (struct sockaddr *)&name, &namelen) == -1)
-   error_die("getsockname");
-  *port = ntohs(name.sin_port);
- }
- if (listen(httpd, 5) < 0)
-  error_die("listen");
- return(httpd);
+    if (*port == 0)  /* if dynamically allocating a port */
+    {
+        int namelen = sizeof(name);
+        //在以端口号0调用bind(告知内核去动态选择本地端口号)后，getsockname用来返回由内核赋予的本地端口号
+        if (getsockname(httpd, (struct sockaddr *)&name, &namelen) == -1)
+            error_die("getsockname");
+        //更新端口号
+        //ntohs用来把short字节顺序从网络顺序改为主机顺序(Network to Host Short)
+        *port = ntohs(name.sin_port);
+    }
+    //监听
+    if (listen(httpd, 5) < 0)
+        error_die("listen");
+    return(httpd);
 }
 
 /**********************************************************************/
@@ -475,6 +484,7 @@ void unimplemented(int client)
 int main(void)
 {
  int server_sock = -1;
+ //unsigned short (2 bytes)
  u_short port = 0;
  int client_sock = -1;
  struct sockaddr_in client_name;
