@@ -449,6 +449,8 @@ int startup(u_short *port)
     //监听
     if (listen(httpd, 5) < 0)
         error_die("listen");
+
+    //返回套接字描述符
     return(httpd);
 }
 
@@ -483,30 +485,37 @@ void unimplemented(int client)
 
 int main(void)
 {
- int server_sock = -1;
- //unsigned short (2 bytes)
- u_short port = 0;
- int client_sock = -1;
- struct sockaddr_in client_name;
- int client_name_len = sizeof(client_name);
- pthread_t newthread;
+    int server_sock = -1;
+    //unsigned short (2 bytes)
+    u_short port = 0;
+    int client_sock = -1;
 
- server_sock = startup(&port);
- printf("httpd running on port %d\n", port);
+    struct sockaddr_in client_name;
+    int client_name_len = sizeof(client_name);
 
- while (1)
- {
-  client_sock = accept(server_sock,
-                       (struct sockaddr *)&client_name,
-                       &client_name_len);
-  if (client_sock == -1)
-   error_die("accept");
- /* accept_request(client_sock); */
- if (pthread_create(&newthread , NULL, accept_request, client_sock) != 0)
-   perror("pthread_create");
- }
+    pthread_t newthread;
 
- close(server_sock);
+    //监听套接字描述符
+    server_sock = startup(&port);
 
- return(0);
+    printf("httpd running on port %d\n", port);
+
+    while (1)
+    {
+        client_sock = accept(server_sock,
+            (struct sockaddr *)&client_name,
+                        &client_name_len);
+        if (client_sock == -1)
+            error_die("accept");
+        /* accept_request(client_sock); */
+
+        //启动线程处理新的连接
+        if (pthread_create(&newthread , NULL, accept_request, client_sock) != 0)
+            perror("pthread_create");
+    }
+
+    //关闭套接字
+    close(server_sock);
+
+    return(0);
 }
