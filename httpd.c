@@ -43,12 +43,8 @@ void serve_file(int, const char *);
 int startup(u_short *);
 void unimplemented(int);
 
-/**********************************************************************/
-/* A request has caused a call to accept() on the server port to
- * return.  Process the request appropriately.
- * Parameters: the socket connected to the client 
- * 处理套接字上监听到的HTTP请求   */
-/**********************************************************************/
+
+//处理套接字上监听到的HTTP请求   */
 void accept_request(int client)
 {
     char buf[1024];
@@ -157,8 +153,6 @@ void accept_request(int client)
     //关闭套接字
     close(client);
 }
-
-
 //通知客户端有错误发生
 void bad_request(int client)
 {
@@ -195,22 +189,19 @@ void cat(int client, FILE *resource)
  }
 }
 
-/**********************************************************************/
-/* Inform the client that a CGI script could not be executed.
- * Parameter: the client socket descriptor. */
-/**********************************************************************/
+//告诉客户端CGI脚本不能被执行
 void cannot_execute(int client)
 {
-char buf[1024];
+    char buf[1024];
 
- sprintf(buf, "HTTP/1.0 500 Internal Server Error\r\n");
- send(client, buf, strlen(buf), 0);
- sprintf(buf, "Content-type: text/html\r\n");
- send(client, buf, strlen(buf), 0);
- sprintf(buf, "\r\n");
- send(client, buf, strlen(buf), 0);
- sprintf(buf, "<P>Error prohibited CGI execution.\r\n");
- send(client, buf, strlen(buf), 0);
+    sprintf(buf, "HTTP/1.0 500 Internal Server Error\r\n");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "Content-type: text/html\r\n");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "\r\n");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "<P>Error prohibited CGI execution.\r\n");
+    send(client, buf, strlen(buf), 0);
 }
 
 /**********************************************************************/
@@ -318,49 +309,49 @@ void execute_cgi(int client, const char *path,
  }
 }
 
-/**********************************************************************/
-/* Get a line from a socket, whether the line ends in a newline,
- * carriage return, or a CRLF combination.  Terminates the string read
- * with a null character.  If no newline indicator is found before the
- * end of the buffer, the string is terminated with a null.  If any of
- * the above three line terminators is read, the last character of the
- * string will be a linefeed and the string will be terminated with a
- * null character.
- * Parameters: the socket descriptor
- *             the buffer to save the data in
- *             the size of the buffer
- * Returns: the number of bytes stored (excluding null) */
-/**********************************************************************/
+
+
 int get_line(int sock, char *buf, int size)
 {
- int i = 0;
- char c = '\0';
- int n;
+    int i = 0;
+    char c = '\0';
+    int n;
 
- while ((i < size - 1) && (c != '\n'))
- {
-  n = recv(sock, &c, 1, 0);
-  /* DEBUG printf("%02X\n", c); */
-  if (n > 0)
-  {
-   if (c == '\r')
-   {
-    n = recv(sock, &c, 1, MSG_PEEK);
-    /* DEBUG printf("%02X\n", c); */
-    if ((n > 0) && (c == '\n'))
-     recv(sock, &c, 1, 0);
-    else
-     c = '\n';
-   }
-   buf[i] = c;
-   i++;
-  }
-  else
-   c = '\n';
- }
- buf[i] = '\0';
+    while ((i < size - 1) && (c != '\n'))
+    {
+        //读一个字节存放在C中
+        //成功则返回实际读取字节数
+        //最后一个参数flags设为0，表示读取数据并且从sock中删除已经读取的数据
+        n = recv(sock, &c, 1, 0);
+        /* DEBUG printf("%02X\n", c); */
+        if (n > 0)
+        {
+            //如果是回车符继续读取
+            if (c == '\r')
+            {
+                //使用 MSG_PEEK 标志使下一次读取依然可以得到这次读取的内容
+                //即不删除已读数据 
+                n = recv(sock, &c, 1, MSG_PEEK);
+                //如果是换行符，继续读取下一个字符
+                //并删除已读数据
+                if ((n > 0) && (c == '\n'))
+                    recv(sock, &c, 1, 0);
+                //只读取到回车符而没有换行符
+                //c置为换行符，终止读取
+                else
+                    c = '\n';
+            }
+        buf[i] = c;
+        i++;
+        }
+        //没有读到任何数据
+        else
+            c = '\n';
+    }
+    buf[i] = '\0';
  
- return(i);
+    //返回读到字节数，包括'\0'
+    return(i);
 }
 
 /**********************************************************************/
@@ -368,6 +359,7 @@ int get_line(int sock, char *buf, int size)
 /* Parameters: the socket to print the headers on
  *             the name of the file */
 /**********************************************************************/
+//返回HTTP响应头
 void headers(int client, const char *filename)
 {
  char buf[1024];
@@ -383,31 +375,30 @@ void headers(int client, const char *filename)
  send(client, buf, strlen(buf), 0);
 }
 
-/**********************************************************************/
-/* Give a client a 404 not found status message. */
-/**********************************************************************/
+
+//给客户端404错误(not found)
 void not_found(int client)
 {
- char buf[1024];
+    char buf[1024];
 
- sprintf(buf, "HTTP/1.0 404 NOT FOUND\r\n");
- send(client, buf, strlen(buf), 0);
- sprintf(buf, SERVER_STRING);
- send(client, buf, strlen(buf), 0);
- sprintf(buf, "Content-Type: text/html\r\n");
- send(client, buf, strlen(buf), 0);
- sprintf(buf, "\r\n");
- send(client, buf, strlen(buf), 0);
- sprintf(buf, "<HTML><TITLE>Not Found</TITLE>\r\n");
- send(client, buf, strlen(buf), 0);
- sprintf(buf, "<BODY><P>The server could not fulfill\r\n");
- send(client, buf, strlen(buf), 0);
- sprintf(buf, "your request because the resource specified\r\n");
- send(client, buf, strlen(buf), 0);
- sprintf(buf, "is unavailable or nonexistent.\r\n");
- send(client, buf, strlen(buf), 0);
- sprintf(buf, "</BODY></HTML>\r\n");
- send(client, buf, strlen(buf), 0);
+    sprintf(buf, "HTTP/1.0 404 NOT FOUND\r\n");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, SERVER_STRING);
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "Content-Type: text/html\r\n");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "\r\n");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "<HTML><TITLE>Not Found</TITLE>\r\n");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "<BODY><P>The server could not fulfill\r\n");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "your request because the resource specified\r\n");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "is unavailable or nonexistent.\r\n");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "</BODY></HTML>\r\n");
+    send(client, buf, strlen(buf), 0);
 }
 
 /**********************************************************************/
@@ -419,34 +410,29 @@ void not_found(int client)
 /**********************************************************************/
 void serve_file(int client, const char *filename)
 {
- FILE *resource = NULL;
- int numchars = 1;
- char buf[1024];
+    FILE *resource = NULL;
+    int numchars = 1;
+    char buf[1024];
 
- buf[0] = 'A'; buf[1] = '\0';
- while ((numchars > 0) && strcmp("\n", buf))  /* read & discard headers */
-  numchars = get_line(client, buf, sizeof(buf));
+    buf[0] = 'A'; buf[1] = '\0';
+    while ((numchars > 0) && strcmp("\n", buf))  /* read & discard headers */
+        numchars = get_line(client, buf, sizeof(buf));
 
- resource = fopen(filename, "r");
- if (resource == NULL)
-  not_found(client);
- else
- {
-  headers(client, filename);
-  cat(client, resource);
- }
- fclose(resource);
+    resource = fopen(filename, "r");
+
+    //如果文件不存在
+    if (resource == NULL)
+        not_found(client);
+    else
+    {
+        headers(client, filename);
+        cat(client, resource);
+    }
+        fclose(resource);
 }
 
-/**********************************************************************/
-/* This function starts the process of listening for web connections
- * on a specified port.  If the port is 0, then dynamically allocate a
- * port and modify the original port variable to reflect the actual
- * port.
- 开启http服务，包括绑定端口，监听，开启线程处理链接
- * Parameters: pointer to variable containing the port to connect on
- * Returns: the socket */
-/**********************************************************************/
+
+//开启http服务，包括绑定端口，监听，开启线程处理链接
 int startup(u_short *port)
 {
     int httpd = 0;
@@ -483,11 +469,8 @@ int startup(u_short *port)
     return(httpd);
 }
 
-/**********************************************************************/
-/* Inform the client that the requested web method has not been
- * implemented.
- * Parameter: the client socket */
-/**********************************************************************/
+
+//告诉客户端该方法(method)未被实现
 void unimplemented(int client)
 {
  char buf[1024];
@@ -510,7 +493,6 @@ void unimplemented(int client)
  send(client, buf, strlen(buf), 0);
 }
 
-/**********************************************************************/
 
 int main(void)
 {
