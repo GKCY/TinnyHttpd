@@ -179,14 +179,14 @@ void bad_request(int client)
 /**********************************************************************/
 void cat(int client, FILE *resource)
 {
- char buf[1024];
+    char buf[1024];
 
- fgets(buf, sizeof(buf), resource);
- while (!feof(resource))
- {
-  send(client, buf, strlen(buf), 0);
-  fgets(buf, sizeof(buf), resource);
- }
+    fgets(buf, sizeof(buf), resource);
+    while (!feof(resource))
+    {
+        send(client, buf, strlen(buf), 0);
+        fgets(buf, sizeof(buf), resource);
+    }
 }
 
 //告诉客户端CGI脚本不能被执行
@@ -310,7 +310,7 @@ void execute_cgi(int client, const char *path,
 }
 
 
-
+//从socket buffer中获取一行
 int get_line(int sock, char *buf, int size)
 {
     int i = 0;
@@ -354,25 +354,21 @@ int get_line(int sock, char *buf, int size)
     return(i);
 }
 
-/**********************************************************************/
-/* Return the informational HTTP headers about a file. */
-/* Parameters: the socket to print the headers on
- *             the name of the file */
-/**********************************************************************/
+
 //返回HTTP响应头
 void headers(int client, const char *filename)
 {
- char buf[1024];
- (void)filename;  /* could use filename to determine file type */
+    char buf[1024];
+    (void)filename;  /* could use filename to determine file type */
 
- strcpy(buf, "HTTP/1.0 200 OK\r\n");
- send(client, buf, strlen(buf), 0);
- strcpy(buf, SERVER_STRING);
- send(client, buf, strlen(buf), 0);
- sprintf(buf, "Content-Type: text/html\r\n");
- send(client, buf, strlen(buf), 0);
- strcpy(buf, "\r\n");
- send(client, buf, strlen(buf), 0);
+    strcpy(buf, "HTTP/1.0 200 OK\r\n");
+    send(client, buf, strlen(buf), 0);
+    strcpy(buf, SERVER_STRING);
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "Content-Type: text/html\r\n");
+    send(client, buf, strlen(buf), 0);
+    strcpy(buf, "\r\n");
+    send(client, buf, strlen(buf), 0);
 }
 
 
@@ -418,6 +414,7 @@ void serve_file(int client, const char *filename)
     while ((numchars > 0) && strcmp("\n", buf))  /* read & discard headers */
         numchars = get_line(client, buf, sizeof(buf));
 
+    //以只读方式打开文件
     resource = fopen(filename, "r");
 
     //如果文件不存在
@@ -425,10 +422,12 @@ void serve_file(int client, const char *filename)
         not_found(client);
     else
     {
+        //先返回文件头部消息
         headers(client, filename);
         cat(client, resource);
     }
-        fclose(resource);
+    //关闭
+    fclose(resource);
 }
 
 
