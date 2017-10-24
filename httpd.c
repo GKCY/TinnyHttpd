@@ -1,17 +1,3 @@
-/* J. David's webserver */
-/* This is a simple webserver.
- * Created November 1999 by J. David Blackstone.
- * CSE 4344 (Network concepts), Prof. Zeigler
- * University of Texas at Arlington
- */
-/* This program compiles for Sparc Solaris 2.6.
- * To compile for Linux:
- *  1) Comment out the #include <pthread.h> line.
- *  2) Comment out the line that defines the variable newthread.
- *  3) Comment out the two lines that run pthread_create().
- *  4) Uncomment the line that runs accept_request().
- *  5) Remove -lsocket from the Makefile.
- */
 #include <stdio.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -209,18 +195,16 @@ void error_die(const char *sc)
  exit(1);
 }
 
-/**********************************************************************/
-/* Execute a CGI script.  Will need to set environment variables as
- * appropriate.
- * Parameters: client socket descriptor
- *             path to the CGI script */
-/**********************************************************************/
+//运行CGI脚本
 void execute_cgi(int client, const char *path,
                  const char *method, const char *query_string)
 {
     char buf[1024];
+
+    //申明的读写管道
     int cgi_output[2];
     int cgi_input[2];
+
     pid_t pid;
     int status;
     int i;
@@ -228,20 +212,26 @@ void execute_cgi(int client, const char *path,
     int numchars = 1;
     int content_length = -1;
 
+    //往buff中填入内容确保进入下面的while
     buf[0] = 'A'; buf[1] = '\0';
+
+    //如果是get方法，只读取头部忽略剩下的内容
     if (strcasecmp(method, "GET") == 0)
-        while ((numchars > 0) && strcmp("\n", buf))  /* read & discard headers */
+        while ((numchars > 0) && strcmp("\n", buf))  
             numchars = get_line(client, buf, sizeof(buf));
-    else    /* POST */
+    //post方法
+    else    
     {   
         numchars = get_line(client, buf, sizeof(buf));
         while ((numchars > 0) && strcmp("\n", buf))
         {
+            //截取字符串，如果是Content-Length，atoi函数转换为int保存
             buf[15] = '\0';
             if (strcasecmp(buf, "Content-Length:") == 0)
                 content_length = atoi(&(buf[16]));
             numchars = get_line(client, buf, sizeof(buf));
         }
+        //如果 http 请求的 header 没有指示 body 长度大小的参数，报错返回
         if (content_length == -1) 
         {
             bad_request(client);
@@ -252,6 +242,7 @@ void execute_cgi(int client, const char *path,
     sprintf(buf, "HTTP/1.0 200 OK\r\n");
     send(client, buf, strlen(buf), 0);
 
+    //创建两个管道，用于进程间通信
     if (pipe(cgi_output) < 0) 
     {
         cannot_execute(client);
@@ -263,21 +254,27 @@ void execute_cgi(int client, const char *path,
         return;
     }
 
+
     if ( (pid = fork()) < 0 ) 
     {
         cannot_execute(client);
         return;
     }
-    if (pid == 0)  /* child: CGI script */
+    if (pid == 0)  //子进程执行CGI脚本
     {
         char meth_env[255];
         char query_env[255];
         char length_env[255];
 
-        dup2(cgi_output[1], 1);
-        dup2(cgi_input[0], 0);
-        close(cgi_output[0]);
-        close(cgi_input[1]);
+        dup2(cgi_output[1], 1); //系统标准输出重定向为cgi_output[1]
+        dup2(cgi_input[0], 0);  //系统标准输出重定向为cgi_input[0]
+
+        
+        close(cgi_output[0]);   //关闭cgi_output管道读
+        close(cgi_input[1]);    //关闭cgi_input管道写
+
+        //添加环境变量
+        //CGI标准需要将请求的方法存储环境变量中，然后和cgi脚本进行交互
         sprintf(meth_env, "REQUEST_METHOD=%s", method);
         putenv(meth_env);
         if (strcasecmp(method, "GET") == 0) 
@@ -290,24 +287,30 @@ void execute_cgi(int client, const char *path,
             sprintf(length_env, "CONTENT_LENGTH=%d", content_length);
             putenv(length_env);
         }
-        execl(path, path, NULL);
+        execl(path, path, NULL); //执行CGI脚本
         exit(0);
     } 
-    else 
-    {    /* parent */
-        close(cgi_output[1]);
-        close(cgi_input[0]);
+    else   //父进程
+    {    
+        close(cgi_output[1]); //关闭cgi_output写
+        close(cgi_input[0]);  //关闭cgi_input读
+
         if (strcasecmp(method, "POST") == 0)
+            //读取post报文内容，发送给CGI版本
             for (i = 0; i < content_length; i++) 
             {
                 recv(client, &c, 1, 0);
                 write(cgi_input[1], &c, 1);
             }
+        //从CGI读取数据发送给浏览器
         while (read(cgi_output[0], &c, 1) > 0)
             send(client, &c, 1, 0);
 
+        //关闭管道
         close(cgi_output[0]);
         close(cgi_input[1]);
+
+        //等待子进程结束
         waitpid(pid, &status, 0);
     }
 }
